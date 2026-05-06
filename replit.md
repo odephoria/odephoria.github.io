@@ -1,13 +1,13 @@
 # Odephoria
 
-An AI-powered study companion that transforms any material into quizzes, flashcards, summaries, study plans, and chat tutor sessions using Claude AI.
+An AI-powered study companion that transforms any material into quizzes, flashcards, summaries, study plans, exam mode, and chat tutor sessions using Claude AI. Organised around persistent "study spaces" where the user pastes material once.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080, proxied at `/api`)
 - `pnpm --filter @workspace/claudelearn run dev` — run the frontend (port 21351, proxied at `/`)
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas (then manually fix `lib/api-zod/src/index.ts` to only export `./generated/api`)
+- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks/Zod schemas (then manually reset `lib/api-zod/src/index.ts` to only `export * from "./generated/api"`)
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL`, `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`, `AI_INTEGRATIONS_ANTHROPIC_API_KEY`
 
@@ -24,44 +24,47 @@ An AI-powered study companion that transforms any material into quizzes, flashca
 ## Where things live
 
 - `lib/api-spec/openapi.yaml` — OpenAPI source of truth
-- `lib/api-spec/orval.config.ts` — codegen config (no `schemas` key; avoids duplicate exports)
-- `lib/api-zod/src/index.ts` — manually maintained barrel (`export * from "./generated/api"` only)
-- `lib/db/src/schema/` — Drizzle schemas: conversations, messages, studySessions
-- `artifacts/api-server/src/routes/` — anthropic.ts, study.ts, health.ts
-- `artifacts/claudelearn/src/` — React app: pages/, components/, hooks/, lib/sounds.ts
+- `lib/db/src/schema/` — Drizzle schemas: conversations, messages, studySessions, studySpaces
+- `artifacts/api-server/src/routes/` — anthropic.ts, study.ts, health.ts, spaces.ts
+- `artifacts/claudelearn/src/` — React app: pages/, components/, context/SpaceContext.tsx
+- `artifacts/claudelearn/src/context/SpaceContext.tsx` — active study space state
+- `artifacts/claudelearn/src/components/StudyLayout.tsx` — main study wrapper (nav+chat sidebar)
+- `artifacts/claudelearn/src/components/ChatSidebar.tsx` — right-side streaming chat panel
+- `artifacts/claudelearn/src/components/MarkdownRenderer.tsx` — custom markdown → JSX
 
 ## Architecture decisions
 
-- Chat uses streaming SSE: the `/api/anthropic/conversations/:id/messages` endpoint streams tokens via `text/event-stream` and saves the full response to DB at the end.
-- Hover sounds use Web Audio API (no sound files needed) — `lib/sounds.ts` generates tones procedurally.
-- All AI calls go through `@workspace/integrations-anthropic-ai` which uses Replit-provisioned API keys.
-- The `api-zod/src/index.ts` barrel must be kept to `export * from "./generated/api"` only — codegen regenerates it with extra invalid exports that must be removed.
-- Study sessions are saved to DB after quiz completion for progress tracking.
+- **Study spaces**: each space stores materialText + optional youtubeUrl + lastVisitedPage. Creating a space auto-creates a dedicated conversation.
+- **Chat uses streaming SSE**: `/api/anthropic/conversations/:id/messages` streams tokens via `text/event-stream` and saves full response to DB at end.
+- **SpaceContext**: active space held in React context (no URL param duplication). StudyLayout reads `/space/:id/:page` and loads space from API.
+- **No emojis**: AI system prompt forbids emojis; UI uses Lucide icons; MarkdownRenderer handles `**bold**`, headers, lists, code.
+- **Paper theme**: warm cream light mode (`index.css`). No dark mode. CSS vars: `--background 38 35% 96%`, `--primary 248 52% 40%`.
+- **Codegen gotcha**: after `pnpm --filter @workspace/api-spec run codegen`, manually reset `lib/api-zod/src/index.ts` to `export * from "./generated/api"` only.
 
 ## Product
 
-- **Chat Tutor**: Streaming chat with Claude, persisted conversation history
-- **Quiz Generator**: AI-generated MCQs from any material with explanations and difficulty levels
-- **Flashcards**: Flip cards with mastered/review tracking and hints
-- **Summary Generator**: Structured summaries with key points, concept definitions, exam tips
-- **Pomodoro Timer**: Focus timer with configurable durations and session tracking
-- **Study Plan**: AI-generated multi-day study roadmap with day completion tracking
-- **Progress Dashboard**: Session history, scores, streaks, top topics
+- **Study Spaces**: persistent rooms; paste material + optional YouTube video once
+- **Tutor Chat**: streaming chat sidebar always on right in all study tools; full-screen chat page
+- **Quiz**: AI MCQs from space material; shuffle + extend (add more) buttons
+- **Exam Mode**: hidden answers; submit all → AI gap analysis + improvement plan
+- **Flashcards**: flip cards with mastered/review tracking, shuffle
+- **Summary**: key points, concept definitions, exam tips, full summary tabs
+- **Pomodoro Timer**: focus timer with configurable durations
+- **Study Plan**: multi-day roadmap with day completion tracking
+- **Progress Dashboard**: session history, scores, streaks
 
 ## User preferences
 
-- Dark purple UI, always dark mode, no light mode toggle
-- No emojis in UI or code
-- Hover sounds via Web Audio API (no files)
-- Fun and interactive
+- Paper style (warm cream light mode), no dark mode
+- No emojis anywhere in UI or AI responses
+- Use Lucide icons instead of emoji
+- AI must use **bold** for important terms, proper markdown
+- Tutor chat sidebar visible on right of all study tools
+- Fun and interactive, hover sounds via Web Audio API
 
 ## Gotchas
 
-- After running codegen, `lib/api-zod/src/index.ts` gets regenerated with invalid exports (`./generated/types`, `./generated/api.schemas`). Always reset it to `export * from "./generated/api";` only.
-- Never call service ports directly in curl — always use `localhost:80/api/...` (the shared proxy).
-- `pnpm run typecheck:libs` must pass before `pnpm --filter @workspace/api-server run typecheck` will see updated lib types.
-
-## Pointers
-
-- See `.local/skills/pnpm-workspace/` for workspace structure, TS, and codegen details
-- See `.local/skills/ai-integrations-anthropic/` for Anthropic integration setup
+- Never call service ports directly in curl — always use `localhost:80/api/...`
+- `pnpm run typecheck:libs` must pass before `pnpm --filter @workspace/api-server run typecheck`
+- `lib/api-zod/src/index.ts` gets overwritten by codegen with invalid exports; always reset to `export * from "./generated/api";`
+- Model: `"claude-sonnet-4-6"` throughout

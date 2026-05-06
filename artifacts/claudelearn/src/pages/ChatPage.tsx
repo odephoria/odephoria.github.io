@@ -1,273 +1,171 @@
-import { useState, useRef, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  useListAnthropicConversations,
-  useCreateAnthropicConversation,
-  useDeleteAnthropicConversation,
-  getListAnthropicConversationsQueryKey,
-} from "@workspace/api-client-react";
-import type { AnthropicConversation, AnthropicMessage } from "@workspace/api-client-react";
-import { SoundButton } from "@/components/SoundButton";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useSpace } from "@/context/SpaceContext";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { useSound } from "@/hooks/use-sound";
+import { Send, Bot, User, Loader2, AlertTriangle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Plus, Trash2, Send, Bot, User, Loader2 } from "lucide-react";
 
-interface Message extends AnthropicMessage {
-  streaming?: boolean;
-}
+interface Message { id: number; role: string; content: string; streaming?: boolean; }
 
 export default function ChatPage() {
+  const { space } = useSpace();
   const { play } = useSound();
-  const qc = useQueryClient();
-  const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [newConvTitle, setNewConvTitle] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { data: conversations = [] } = useListAnthropicConversations();
-  const createConv = useCreateAnthropicConversation();
-  const deleteConv = useDeleteAnthropicConversation();
+  const load = useCallback(async () => {
+    if (!space?.conversationId) return;
+    try {
+      const res = await fetch(`/api/anthropic/conversations/${space.conversationId}/messages`);
+      if (res.ok) { setMessages(await res.json()); setLoaded(true); }
+    } catch {}
+  }, [space?.conversationId]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  async function loadConversation(id: number) {
-    setActiveConvId(id);
-    play("click");
-    const res = await fetch(`/api/anthropic/conversations/${id}`);
-    const data = await res.json();
-    setMessages(data.messages || []);
-  }
+  const systemPrompt = space ? `You are Odephoria, a helpful AI study tutor. The student is studying: "${space.name}".
 
-  async function handleNewConversation() {
-    const title = newConvTitle.trim() || "New conversation";
-    const conv = await createConv.mutateAsync({ data: { title } });
-    await qc.invalidateQueries({ queryKey: getListAnthropicConversationsQueryKey() });
-    setActiveConvId(conv.id);
-    setMessages([]);
-    setNewConvTitle("");
-    play("success");
-  }
+${space.materialText ? `Study material:\n${space.materialText.slice(0, 6000)}\n\n` : ""}Rules:
+- Use **bold** for key terms and important concepts
+- Use markdown headers (## ) when explaining structured topics
+- Never use emojis — use plain text formatting only
+- Be educational, precise, and engaging
+- Give examples and analogies to make abstract concepts concrete
+- Keep responses focused and relevant to the study material` : "";
 
-  async function handleDelete(id: number, e: React.MouseEvent) {
-    e.stopPropagation();
-    play("error");
-    await deleteConv.mutateAsync({ id });
-    await qc.invalidateQueries({ queryKey: getListAnthropicConversationsQueryKey() });
-    if (activeConvId === id) {
-      setActiveConvId(null);
-      setMessages([]);
-    }
-  }
-
-  async function handleSend() {
-    if (!input.trim() || !activeConvId || streaming) return;
-    const userContent = input.trim();
+  async function send() {
+    if (!input.trim() || !space?.conversationId || streaming) return;
+    const content = input.trim();
     setInput("");
     play("send");
 
-    const userMsg: Message = {
-      id: Date.now(),
-      conversationId: activeConvId,
-      role: "user",
-      content: userContent,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-
-    const aiMsg: Message = {
-      id: Date.now() + 1,
-      conversationId: activeConvId,
-      role: "assistant",
-      content: "",
-      createdAt: new Date().toISOString(),
-      streaming: true,
-    };
-    setMessages((prev) => [...prev, aiMsg]);
+    setMessages((prev) => [...prev, { id: Date.now(), role: "user", content }]);
+    setMessages((prev) => [...prev, { id: Date.now() + 1, role: "assistant", content: "", streaming: true }]);
     setStreaming(true);
 
     try {
-      const res = await fetch(`/api/anthropic/conversations/${activeConvId}/messages`, {
+      const res = await fetch(`/api/anthropic/conversations/${space.conversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: userContent }),
+        body: JSON.stringify({ content, systemPrompt }),
       });
-
-      if (!res.body) throw new Error("No stream body");
+      if (!res.body) throw new Error();
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
-        for (const line of lines) {
+        for (const line of decoder.decode(value, { stream: true }).split("\n").filter((l) => l.startsWith("data: "))) {
           try {
             const data = JSON.parse(line.slice(6));
-            if (data.content) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.streaming ? { ...m, content: m.content + data.content } : m
-                )
-              );
-            }
+            if (data.content) setMessages((prev) => prev.map((m) => m.streaming ? { ...m, content: m.content + data.content } : m));
             if (data.done) play("receive");
           } catch {}
         }
       }
-    } catch {
-      play("error");
-    } finally {
-      setStreaming(false);
-      setMessages((prev) => prev.map((m) => ({ ...m, streaming: false })));
-    }
+    } catch { play("error"); }
+    finally { setStreaming(false); setMessages((prev) => prev.map((m) => ({ ...m, streaming: false }))); }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const onKeyDown = (e: React.KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
+
+  if (!space?.conversationId) {
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <div className="text-center space-y-3">
+          <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto" />
+          <p className="font-medium">No conversation linked to this space</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-screen">
-      {/* Sidebar */}
-      <aside className="w-64 flex flex-col border-r border-border bg-card/50"
-        style={{ flexShrink: 0 }}>
-        <div className="p-4 border-b border-border">
-          <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider mb-3">Conversations</h2>
-          <div className="flex gap-2">
-            <input
-              className="flex-1 text-sm bg-muted border border-border rounded-md px-2 py-1 text-foreground placeholder:text-muted-foreground outline-none focus:border-primary/50 transition-colors"
-              placeholder="Topic..."
-              value={newConvTitle}
-              onChange={(e) => setNewConvTitle(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleNewConversation()}
-            />
-            <SoundButton size="icon" variant="outline" className="h-8 w-8 shrink-0" onClick={handleNewConversation}>
-              <Plus className="w-4 h-4" />
-            </SoundButton>
-          </div>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-1">
-            {(conversations as AnthropicConversation[]).map((conv) => (
-              <div
-                key={conv.id}
-                onClick={() => loadConversation(conv.id)}
-                onMouseEnter={() => play("hover")}
-                className={cn(
-                  "group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-all text-sm",
-                  activeConvId === conv.id
-                    ? "bg-primary/15 text-primary"
-                    : "hover:bg-muted text-foreground"
-                )}
-              >
-                <span className="truncate flex-1">{conv.title}</span>
-                <button
-                  onClick={(e) => handleDelete(conv.id, e)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:text-destructive"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
+    <div className="flex flex-col h-full">
+      <ScrollArea className="flex-1 px-6 py-4">
+        <div className="max-w-3xl mx-auto space-y-5">
+          {!loaded && (
+            <div className="flex justify-center pt-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          )}
+          {loaded && messages.length === 0 && (
+            <div className="text-center pt-16 space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+                <Bot className="w-7 h-7 text-primary" />
               </div>
-            ))}
-            {(conversations as AnthropicConversation[]).length === 0 && (
-              <p className="text-xs text-muted-foreground px-3 py-4 text-center">
-                Create a conversation to start chatting
+              <h3 className="font-semibold">Ask Odephoria anything</h3>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                {space.materialText ? "I have access to your study material. Ask me to explain, quiz you, or clarify anything." : "Ask me any question and I'll help you understand."}
               </p>
-            )}
-          </div>
-        </ScrollArea>
-      </aside>
-
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
-        {!activeConvId ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-                <Bot className="w-8 h-8 text-primary" />
-              </div>
-              <h2 className="text-xl font-semibold">Select or create a conversation</h2>
-              <p className="text-muted-foreground text-sm">Ask Claude anything about your study material</p>
-              <SoundButton onClick={handleNewConversation}>
-                <Plus className="w-4 h-4 mr-2" />
-                New Conversation
-              </SoundButton>
             </div>
-          </div>
-        ) : (
-          <>
-            <ScrollArea className="flex-1 p-6">
-              <div className="max-w-3xl mx-auto space-y-6">
-                {messages.map((msg) => (
-                  <div key={msg.id} className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}>
-                    {msg.role === "assistant" && (
-                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-1">
-                        <Bot className="w-4 h-4 text-primary" />
+          )}
+          {messages.map((msg) => (
+            <div key={msg.id} className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}>
+              {msg.role === "assistant" && (
+                <div className="w-8 h-8 rounded-full bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                  <Bot className="w-4 h-4 text-primary" />
+                </div>
+              )}
+              <div className={cn(
+                "max-w-[78%] rounded-2xl px-4 py-3",
+                msg.role === "user"
+                  ? "bg-primary text-primary-foreground rounded-tr-sm"
+                  : "bg-card border border-card-border rounded-tl-sm paper-shadow"
+              )}>
+                {msg.role === "assistant" ? (
+                  <>
+                    {msg.streaming && !msg.content ? (
+                      <div className="flex gap-1.5 py-1">
+                        {[0, 150, 300].map((d) => (
+                          <span key={d} className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                        ))}
                       </div>
+                    ) : (
+                      <>
+                        <MarkdownRenderer content={msg.content} />
+                        {msg.streaming && <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse" />}
+                      </>
                     )}
-                    <div className={cn(
-                      "max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                      msg.role === "user"
-                        ? "bg-primary text-primary-foreground rounded-tr-sm"
-                        : "bg-card border border-border rounded-tl-sm"
-                    )}>
-                      {msg.streaming && !msg.content ? (
-                        <div className="flex gap-1 py-1">
-                          <span className="w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="w-2 h-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
-                        </div>
-                      ) : (
-                        <div className="prose prose-sm prose-invert max-w-none whitespace-pre-wrap">
-                          {msg.content}
-                          {msg.streaming && <span className="inline-block w-1 h-4 bg-primary ml-1 animate-pulse" />}
-                        </div>
-                      )}
-                    </div>
-                    {msg.role === "user" && (
-                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0 mt-1">
-                        <User className="w-4 h-4" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <div ref={bottomRef} />
+                  </>
+                ) : (
+                  <p className="text-sm leading-relaxed">{msg.content}</p>
+                )}
               </div>
-            </ScrollArea>
-
-            <div className="border-t border-border p-4">
-              <div className="max-w-3xl mx-auto flex gap-3">
-                <Textarea
-                  className="flex-1 resize-none bg-muted border-border focus:border-primary/50 min-h-[52px] max-h-[200px] text-sm"
-                  placeholder="Ask Claude about your study material... (Enter to send, Shift+Enter for newline)"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  rows={2}
-                />
-                <SoundButton
-                  size="icon"
-                  className="h-[52px] w-[52px] shrink-0"
-                  disabled={streaming || !input.trim()}
-                  onClick={handleSend}
-                  soundOnClick={false}
-                >
-                  {streaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                </SoundButton>
-              </div>
+              {msg.role === "user" && (
+                <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center shrink-0 mt-0.5">
+                  <User className="w-4 h-4 text-muted-foreground" />
+                </div>
+              )}
             </div>
-          </>
-        )}
+          ))}
+          <div ref={bottomRef} />
+        </div>
+      </ScrollArea>
+
+      <div className="border-t border-border bg-card/60 px-6 py-3">
+        <div className="max-w-3xl mx-auto flex gap-3">
+          <Textarea
+            className="flex-1 resize-none bg-muted border-border focus:border-primary/50 text-sm min-h-[52px] max-h-[180px]"
+            placeholder="Ask about your study material... (Enter to send, Shift+Enter for newline)"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            rows={2}
+          />
+          <button
+            onClick={send}
+            disabled={streaming || !input.trim()}
+            onMouseEnter={() => play("hover")}
+            className="w-12 h-12 mt-auto rounded-xl bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40 hover:brightness-95 transition-all paper-shadow"
+          >
+            {streaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
     </div>
   );
