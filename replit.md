@@ -1,4 +1,4 @@
-# ClaudeLearn
+# Odephoria
 
 An AI-powered study companion that transforms any material into quizzes, flashcards, summaries, study plans, and chat tutor sessions using Claude AI.
 

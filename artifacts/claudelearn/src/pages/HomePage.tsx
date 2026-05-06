@@ -25,7 +25,7 @@ export default function HomePage() {
             <Sparkles className="w-4 h-4" />
             Powered by Claude AI
           </div>
-          <h1 className="text-5xl font-bold mb-4 gradient-text">ClaudeLearn</h1>
+          <h1 className="text-5xl font-bold mb-4 gradient-text">Odephoria</h1>
           <p className="text-xl text-muted-foreground max-w-xl mx-auto">
             Your intelligent study companion. Paste any material and let AI transform it into quizzes, flashcards, summaries, and more.
           </p>

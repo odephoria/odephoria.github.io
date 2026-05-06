@@ -126,7 +126,7 @@ router.post("/anthropic/conversations/:id/messages", async (req, res) => {
     const stream = anthropic.messages.stream({
       model: MODEL,
       max_tokens: 8192,
-      system: systemPrompt || "You are ClaudeLearn, a helpful AI study tutor. Be clear, engaging, and educational. Use examples, analogies, and step-by-step explanations. Format responses with markdown for clarity.",
+      system: systemPrompt || "You are Odephoria, a helpful AI study tutor. Be clear, engaging, and educational. Use examples, analogies, and step-by-step explanations. Format responses with markdown for clarity.",
       messages: chatMessages,
     });
 
