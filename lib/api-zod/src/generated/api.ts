@@ -14,3 +14,248 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary List all conversations
+ */
+export const ListAnthropicConversationsResponseItem = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListAnthropicConversationsResponse = zod.array(
+  ListAnthropicConversationsResponseItem,
+);
+
+/**
+ * @summary Create a new conversation
+ */
+export const CreateAnthropicConversationBody = zod.object({
+  title: zod.string(),
+});
+
+/**
+ * @summary Get conversation with messages
+ */
+export const GetAnthropicConversationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetAnthropicConversationResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  createdAt: zod.coerce.date(),
+  messages: zod.array(
+    zod.object({
+      id: zod.number(),
+      conversationId: zod.number(),
+      role: zod.string(),
+      content: zod.string(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Delete a conversation
+ */
+export const DeleteAnthropicConversationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List messages in a conversation
+ */
+export const ListAnthropicMessagesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListAnthropicMessagesResponseItem = zod.object({
+  id: zod.number(),
+  conversationId: zod.number(),
+  role: zod.string(),
+  content: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListAnthropicMessagesResponse = zod.array(
+  ListAnthropicMessagesResponseItem,
+);
+
+/**
+ * @summary Send a message and receive an AI response (SSE stream)
+ */
+export const SendAnthropicMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const SendAnthropicMessageBody = zod.object({
+  content: zod.string(),
+  systemPrompt: zod.string().optional(),
+});
+
+/**
+ * @summary Generate quiz from study material
+ */
+export const GenerateQuizBody = zod.object({
+  material: zod.string(),
+  topic: zod.string().optional(),
+  count: zod.number().optional(),
+});
+
+export const GenerateQuizResponseItem = zod.object({
+  question: zod.string(),
+  options: zod.array(zod.string()),
+  answer: zod.number(),
+  explanation: zod.string(),
+  difficulty: zod.string().optional(),
+});
+export const GenerateQuizResponse = zod.array(GenerateQuizResponseItem);
+
+/**
+ * @summary Generate flashcards from study material
+ */
+export const GenerateFlashcardsBody = zod.object({
+  material: zod.string(),
+  topic: zod.string().optional(),
+  count: zod.number().optional(),
+});
+
+export const GenerateFlashcardsResponseItem = zod.object({
+  front: zod.string(),
+  back: zod.string(),
+  hint: zod.string().optional(),
+});
+export const GenerateFlashcardsResponse = zod.array(
+  GenerateFlashcardsResponseItem,
+);
+
+/**
+ * @summary Generate summary from study material
+ */
+export const GenerateSummaryBody = zod.object({
+  material: zod.string(),
+  topic: zod.string().optional(),
+  count: zod.number().optional(),
+});
+
+export const GenerateSummaryResponse = zod.object({
+  title: zod.string(),
+  overview: zod.string(),
+  keyPoints: zod.array(zod.string()),
+  concepts: zod
+    .array(
+      zod.object({
+        term: zod.string(),
+        definition: zod.string(),
+      }),
+    )
+    .optional(),
+  examTips: zod.array(zod.string()).optional(),
+  fullText: zod.string(),
+});
+
+/**
+ * @summary Detect knowledge gaps from quiz results
+ */
+export const DetectGapsBody = zod.object({
+  material: zod.string(),
+  wrongAnswers: zod.array(
+    zod.object({
+      question: zod.string(),
+      yourAnswer: zod.string(),
+      correctAnswer: zod.string(),
+    }),
+  ),
+});
+
+export const DetectGapsResponse = zod.object({
+  weakAreas: zod.array(
+    zod.object({
+      topic: zod.string(),
+      severity: zod.string(),
+      recommendation: zod.string(),
+    }),
+  ),
+  overallScore: zod.number(),
+  studyPriorities: zod.array(zod.string()),
+});
+
+/**
+ * @summary Generate a personalized study plan
+ */
+export const GenerateStudyPlanBody = zod.object({
+  material: zod.string(),
+  goal: zod.string().optional(),
+  daysAvailable: zod.number().optional(),
+});
+
+export const GenerateStudyPlanResponse = zod.object({
+  title: zod.string(),
+  totalDays: zod.number(),
+  sessions: zod.array(
+    zod.object({
+      day: zod.number(),
+      focus: zod.string(),
+      activities: zod.array(zod.string()),
+      duration: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary List all study sessions
+ */
+export const ListStudySessionsResponseItem = zod.object({
+  id: zod.number(),
+  topic: zod.string(),
+  mode: zod.string(),
+  score: zod.number().optional(),
+  totalQuestions: zod.number().optional(),
+  correctAnswers: zod.number().optional(),
+  durationMinutes: zod.number().optional(),
+  createdAt: zod.coerce.date(),
+});
+export const ListStudySessionsResponse = zod.array(
+  ListStudySessionsResponseItem,
+);
+
+/**
+ * @summary Create/save a study session
+ */
+export const CreateStudySessionBody = zod.object({
+  topic: zod.string(),
+  mode: zod.string(),
+  score: zod.number().optional(),
+  totalQuestions: zod.number().optional(),
+  correctAnswers: zod.number().optional(),
+  durationMinutes: zod.number().optional(),
+});
+
+/**
+ * @summary Get overall study progress and analytics
+ */
+export const GetStudyProgressResponse = zod.object({
+  totalSessions: zod.number(),
+  totalMinutes: zod.number(),
+  averageScore: zod.number(),
+  streakDays: zod.number(),
+  recentSessions: zod.array(
+    zod.object({
+      id: zod.number(),
+      topic: zod.string(),
+      mode: zod.string(),
+      score: zod.number().optional(),
+      totalQuestions: zod.number().optional(),
+      correctAnswers: zod.number().optional(),
+      durationMinutes: zod.number().optional(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+  topTopics: zod.array(
+    zod.object({
+      topic: zod.string(),
+      sessions: zod.number(),
+      avgScore: zod.number(),
+    }),
+  ),
+});

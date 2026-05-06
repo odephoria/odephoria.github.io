@@ -8,3 +8,148 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface AnthropicConversation {
+  id: number;
+  title: string;
+  createdAt: string;
+}
+
+export interface AnthropicMessage {
+  id: number;
+  conversationId: number;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface CreateAnthropicConversationBody {
+  title: string;
+}
+
+export interface SendAnthropicMessageBody {
+  content: string;
+  systemPrompt?: string;
+}
+
+export interface AnthropicConversationWithMessages {
+  id: number;
+  title: string;
+  createdAt: string;
+  messages: AnthropicMessage[];
+}
+
+export interface AnthropicError {
+  error: string;
+}
+
+export interface GenerateStudyContentBody {
+  material: string;
+  topic?: string;
+  count?: number;
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  answer: number;
+  explanation: string;
+  difficulty?: string;
+}
+
+export interface Flashcard {
+  front: string;
+  back: string;
+  hint?: string;
+}
+
+export type StudySummaryConceptsItem = {
+  term: string;
+  definition: string;
+};
+
+export interface StudySummary {
+  title: string;
+  overview: string;
+  keyPoints: string[];
+  concepts?: StudySummaryConceptsItem[];
+  examTips?: string[];
+  fullText: string;
+}
+
+export type GapDetectionBodyWrongAnswersItem = {
+  question: string;
+  yourAnswer: string;
+  correctAnswer: string;
+};
+
+export interface GapDetectionBody {
+  material: string;
+  wrongAnswers: GapDetectionBodyWrongAnswersItem[];
+}
+
+export type GapDetectionResultWeakAreasItem = {
+  topic: string;
+  severity: string;
+  recommendation: string;
+};
+
+export interface GapDetectionResult {
+  weakAreas: GapDetectionResultWeakAreasItem[];
+  overallScore: number;
+  studyPriorities: string[];
+}
+
+export interface StudyPlanBody {
+  material: string;
+  goal?: string;
+  daysAvailable?: number;
+}
+
+export type StudyPlanSessionsItem = {
+  day: number;
+  focus: string;
+  activities: string[];
+  duration: string;
+};
+
+export interface StudyPlan {
+  title: string;
+  totalDays: number;
+  sessions: StudyPlanSessionsItem[];
+}
+
+export interface StudySession {
+  id: number;
+  topic: string;
+  mode: string;
+  score?: number;
+  totalQuestions?: number;
+  correctAnswers?: number;
+  durationMinutes?: number;
+  createdAt: string;
+}
+
+export interface CreateStudySessionBody {
+  topic: string;
+  mode: string;
+  score?: number;
+  totalQuestions?: number;
+  correctAnswers?: number;
+  durationMinutes?: number;
+}
+
+export type StudyProgressTopTopicsItem = {
+  topic: string;
+  sessions: number;
+  avgScore: number;
+};
+
+export interface StudyProgress {
+  totalSessions: number;
+  totalMinutes: number;
+  averageScore: number;
+  streakDays: number;
+  recentSessions: StudySession[];
+  topTopics: StudyProgressTopTopicsItem[];
+}
