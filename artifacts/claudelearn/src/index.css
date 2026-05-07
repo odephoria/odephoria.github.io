@@ -66,7 +66,65 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Paper theme - warm, cozy, like a study notebook */
+/* ─── Dark theme ─────────────────────────────────────────── */
+.dark {
+  --button-outline: rgba(180, 160, 255, .15);
+  --badge-outline: rgba(180, 160, 255, .08);
+  --opaque-button-border-intensity: 8;
+  --elevate-1: rgba(255, 255, 255, .04);
+  --elevate-2: rgba(255, 255, 255, .08);
+
+  --background: 228 32% 10%;
+  --foreground: 220 18% 92%;
+
+  --border: 228 22% 22%;
+
+  --card: 228 28% 15%;
+  --card-foreground: 220 18% 92%;
+  --card-border: 228 22% 22%;
+
+  --sidebar: 228 34% 8%;
+  --sidebar-foreground: 220 15% 88%;
+  --sidebar-border: 228 24% 17%;
+  --sidebar-primary: 252 80% 70%;
+  --sidebar-primary-foreground: 228 32% 10%;
+  --sidebar-accent: 228 28% 20%;
+  --sidebar-accent-foreground: 220 15% 88%;
+  --sidebar-ring: 252 80% 70%;
+
+  --popover: 228 28% 13%;
+  --popover-foreground: 220 18% 92%;
+  --popover-border: 228 22% 22%;
+
+  --primary: 252 80% 70%;
+  --primary-foreground: 228 32% 10%;
+
+  --secondary: 228 26% 20%;
+  --secondary-foreground: 220 18% 88%;
+
+  --muted: 228 26% 17%;
+  --muted-foreground: 220 12% 54%;
+
+  --accent: 35 88% 60%;
+  --accent-foreground: 228 32% 10%;
+
+  --destructive: 0 72% 58%;
+  --destructive-foreground: 0 0% 100%;
+
+  --input: 228 26% 21%;
+  --ring: 252 80% 70%;
+
+  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,.35);
+  --shadow-xs:  0px 2px 4px 0px rgba(0,0,0,.4);
+  --shadow-sm:  0px 1px 3px 0px rgba(0,0,0,.45), 0px 1px 2px -1px rgba(0,0,0,.3);
+  --shadow:     0px 2px 6px 0px rgba(0,0,0,.45), 0px 1px 3px -1px rgba(0,0,0,.3);
+  --shadow-md:  0px 4px 10px 0px rgba(0,0,0,.5), 0px 2px 4px -1px rgba(0,0,0,.3);
+  --shadow-lg:  0px 8px 20px 0px rgba(0,0,0,.55), 0px 4px 6px -1px rgba(0,0,0,.3);
+  --shadow-xl:  0px 14px 30px 0px rgba(0,0,0,.6), 0px 8px 10px -1px rgba(0,0,0,.3);
+  --shadow-2xl: 0px 20px 40px 0px rgba(0,0,0,.65);
+}
+
+/* ─── Light (paper) theme ────────────────────────────────── */
 :root {
   --button-outline: rgba(80, 60, 40, .12);
   --badge-outline: rgba(80, 60, 40, .07);

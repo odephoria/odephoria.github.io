@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useSound } from "@/hooks/use-sound";
+import { useTheme } from "@/context/ThemeContext";
 import { SoundButton } from "@/components/SoundButton";
-import { Plus, BookOpen, Youtube, FileText, Clock, Trash2, X, Loader2, ArrowRight, Edit2 } from "lucide-react";
+import { Plus, BookOpen, Youtube, FileText, Clock, Trash2, X, Loader2, ArrowRight, Edit2, Sun, Moon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface StudySpace {
@@ -43,6 +44,7 @@ const EMPTY_FORM: SpaceFormData = { name: "", description: "", materialText: "",
 
 export default function SpacesPage() {
   const { play } = useSound();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [, navigate] = useLocation();
   const [spaces, setSpaces] = useState<StudySpace[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,10 +136,20 @@ export default function SpacesPage() {
           <h1 className="text-3xl font-bold text-foreground">Odephoria</h1>
           <p className="text-muted-foreground mt-1">Your study spaces. Pick one to begin.</p>
         </div>
-        <SoundButton onClick={openCreate} size="sm">
-          <Plus className="w-4 h-4 mr-1.5" />
-          New Space
-        </SoundButton>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { play("click"); toggleTheme(); }}
+            onMouseEnter={() => play("hover")}
+            title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted border border-border transition-all"
+          >
+            {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+          <SoundButton onClick={openCreate} size="sm">
+            <Plus className="w-4 h-4 mr-1.5" />
+            New Space
+          </SoundButton>
+        </div>
       </div>
 
       {/* Grid */}

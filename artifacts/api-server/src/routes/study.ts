@@ -8,12 +8,13 @@ const MODEL = "claude-sonnet-4-6";
 
 router.post("/study/generate-quiz", async (req, res) => {
   try {
-    const { material, topic, count = 8 } = req.body;
+    const { material, topic, count = 8, difficultyHint = "" } = req.body;
     if (!material) {
       return res.status(400).json({ error: "material is required" });
     }
 
     const topicLine = topic ? `Topic focus: ${topic}` : "";
+    const diffLine = difficultyHint ? `\nDifficulty guidance: ${difficultyHint}` : "";
     const message = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 8192,
@@ -21,7 +22,7 @@ router.post("/study/generate-quiz", async (req, res) => {
       messages: [
         {
           role: "user",
-          content: `Generate ${count} multiple choice quiz questions based on this study material. ${topicLine}
+          content: `Generate ${count} multiple choice quiz questions based on this study material. ${topicLine}${diffLine}
 Return ONLY a JSON array like:
 [{"question":"...","options":["A","B","C","D"],"answer":0,"explanation":"...","difficulty":"easy|medium|hard"}]
 where answer is the index (0-3) of the correct option.

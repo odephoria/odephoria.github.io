@@ -1,29 +1,58 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useParams } from "wouter";
 import { useSpace } from "@/context/SpaceContext";
 import { useSound } from "@/hooks/use-sound";
 import { SoundButton } from "@/components/SoundButton";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { Brain, CheckCircle2, XCircle, RotateCcw, Loader2, Trophy, ChevronRight, Shuffle, Plus, AlertTriangle } from "lucide-react";
+import { Brain, CheckCircle2, XCircle, RotateCcw, Loader2, Trophy, ChevronRight, Shuffle, Plus, AlertTriangle, TrendingUp } from "lucide-react";
 
 interface QuizQuestion { question: string; options: string[]; answer: number; explanation: string; difficulty?: string; }
-
 type Phase = "setup" | "quiz" | "results";
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
 
+interface PerfRecord { score: number; total: number; ts: number; }
+
+function loadPerf(spaceId: number): PerfRecord[] {
+  try { return JSON.parse(localStorage.getItem(`quiz_perf_${spaceId}`) ?? "[]"); } catch { return []; }
+}
+
+function savePerf(spaceId: number, records: PerfRecord[]) {
+  try { localStorage.setItem(`quiz_perf_${spaceId}`, JSON.stringify(records.slice(-5))); } catch {}
+}
+
+function getDifficultyHint(records: PerfRecord[]): string {
+  if (records.length === 0) return "";
+  const recent = records.slice(-3);
+  const avg = recent.reduce((s, r) => s + r.score / r.total, 0) / recent.length;
+  if (avg >= 0.85) return `Generate challenging questions (hard difficulty). The student has been consistently scoring around ${Math.round(avg * 100)}% — push their understanding deeper with application and analysis questions.`;
+  if (avg >= 0.65) return `Generate moderately challenging questions (medium difficulty). Recent average is ${Math.round(avg * 100)}% — mix recall with some application questions.`;
+  return `Generate accessible questions (easy/medium difficulty). The student is still building understanding (recent average ${Math.round(avg * 100)}%) — focus on core concepts and key facts.`;
+}
+
+function getDifficultyLabel(records: PerfRecord[]): { label: string; color: string } | null {
+  if (records.length === 0) return null;
+  const recent = records.slice(-3);
+  const avg = recent.reduce((s, r) => s + r.score / r.total, 0) / recent.length;
+  if (avg >= 0.85) return { label: "Hard (adapted)", color: "text-red-600 bg-red-50 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800" };
+  if (avg >= 0.65) return { label: "Medium (adapted)", color: "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800" };
+  return { label: "Foundational (adapted)", color: "text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800" };
+}
+
 export default function QuizPage() {
+  const { id } = useParams<{ id: string }>();
+  const spaceId = parseInt(id ?? "0");
   const { space } = useSpace();
   const { play } = useSound();
   const [phase, setPhase] = useState<Phase>("setup");
   const [count, setCount] = useState(8);
+  const [customCount, setCustomCount] = useState("");
+  const [useCustom, setUseCustom] = useState(false);
   const [loading, setLoading] = useState(false);
   const [extending, setExtending] = useState(false);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -31,18 +60,24 @@ export default function QuizPage() {
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<{ selected: number; correct: boolean }[]>([]);
   const [showExplanation, setShowExplanation] = useState(false);
+  const [perfRecords, setPerfRecords] = useState<PerfRecord[]>([]);
+
+  useEffect(() => { if (spaceId) setPerfRecords(loadPerf(spaceId)); }, [spaceId]);
 
   const material = space?.materialText ?? "";
+  const effectiveCount = useCustom ? (parseInt(customCount) || 8) : count;
 
   const generateQuestions = useCallback(async (append = false) => {
     if (!material) return;
     if (append) setExtending(true); else setLoading(true);
     try {
+      const difficultyHint = getDifficultyHint(perfRecords);
       const res = await fetch("/api/study/generate-quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ material, count }),
+        body: JSON.stringify({ material, count: effectiveCount, difficultyHint }),
       });
+      if (!res.ok) throw new Error("Failed");
       const data: QuizQuestion[] = await res.json();
       if (append) {
         setQuestions((prev) => [...prev, ...data]);
@@ -57,15 +92,12 @@ export default function QuizPage() {
       }
     } catch { play("error"); }
     finally { setLoading(false); setExtending(false); }
-  }, [material, count, play]);
+  }, [material, effectiveCount, perfRecords, play]);
 
   function shuffleQuestions() {
     play("click");
     setQuestions((q) => shuffle(q));
-    setCurrent(0);
-    setSelected(null);
-    setAnswers([]);
-    setShowExplanation(false);
+    setCurrent(0); setSelected(null); setAnswers([]); setShowExplanation(false);
   }
 
   function selectAnswer(idx: number) {
@@ -79,13 +111,24 @@ export default function QuizPage() {
 
   function next() {
     play("click");
-    if (current + 1 >= questions.length) { setPhase("results"); play("success"); }
-    else { setCurrent((c) => c + 1); setSelected(null); setShowExplanation(false); }
+    if (current + 1 >= questions.length) {
+      const score = answers.filter((a) => a.correct).length + (selected !== null && selected === questions[current].answer ? 0 : 0);
+      const finalScore = answers.filter((a) => a.correct).length;
+      const newRecord: PerfRecord = { score: finalScore, total: questions.length, ts: Date.now() };
+      const updated = [...perfRecords, newRecord];
+      setPerfRecords(updated);
+      if (spaceId) savePerf(spaceId, updated);
+      setPhase("results");
+      play("success");
+    } else {
+      setCurrent((c) => c + 1); setSelected(null); setShowExplanation(false);
+    }
   }
 
   function restart() { setPhase("setup"); setQuestions([]); setAnswers([]); setCurrent(0); setSelected(null); setShowExplanation(false); play("click"); }
 
   const score = answers.filter((a) => a.correct).length;
+  const diffLabel = getDifficultyLabel(perfRecords);
 
   /* — SETUP — */
   if (phase === "setup") {
@@ -109,23 +152,48 @@ export default function QuizPage() {
           </div>
         ) : (
           <div className="paper-card p-6 space-y-5">
+            {diffLabel && (
+              <div className={cn("flex items-center gap-2 text-xs px-3 py-2 rounded-lg border font-medium", diffLabel.color)}>
+                <TrendingUp className="w-3.5 h-3.5" />
+                Adaptive difficulty: {diffLabel.label}
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium mb-2.5 block">Number of questions</label>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
                 {[4, 6, 8, 10, 12, 15].map((n) => (
                   <button
                     key={n}
                     onMouseEnter={() => play("hover")}
-                    onClick={() => { play("click"); setCount(n); }}
+                    onClick={() => { play("click"); setCount(n); setUseCustom(false); }}
                     className={cn(
                       "px-3.5 py-1.5 rounded-lg border text-sm font-medium transition-all",
-                      count === n ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"
+                      !useCustom && count === n ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"
                     )}
                   >{n}</button>
                 ))}
+                <button
+                  onMouseEnter={() => play("hover")}
+                  onClick={() => { play("click"); setUseCustom(true); }}
+                  className={cn("px-3.5 py-1.5 rounded-lg border text-sm font-medium transition-all", useCustom ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40")}
+                >
+                  Custom
+                </button>
               </div>
+              {useCustom && (
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  className="mt-3 w-28 text-sm bg-muted border border-border rounded-lg px-3 py-2 text-foreground outline-none focus:border-primary/50 transition-colors"
+                  placeholder="e.g. 20"
+                  value={customCount}
+                  onChange={(e) => setCustomCount(e.target.value)}
+                  autoFocus
+                />
+              )}
             </div>
-            <SoundButton onClick={() => generateQuestions(false)} disabled={loading} className="w-full" size="lg">
+            <SoundButton onClick={() => generateQuestions(false)} disabled={loading || (useCustom && !customCount)} className="w-full" size="lg">
               {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Brain className="w-4 h-4 mr-2" />}
               {loading ? "Generating questions..." : "Generate Quiz"}
             </SoundButton>
@@ -149,28 +217,28 @@ export default function QuizPage() {
           <div className="text-5xl font-bold text-primary mt-4 mb-6">{pct}%</div>
           <Progress value={pct} className="h-2 mb-8" />
         </div>
-
+        {perfRecords.length >= 2 && (() => {
+          const latest = getDifficultyLabel(perfRecords);
+          return latest && <div className={cn("flex items-center justify-center gap-2 text-xs px-3 py-2 rounded-lg border font-medium mb-5 mx-auto w-fit", latest.color)}>
+            <TrendingUp className="w-3.5 h-3.5" /> Next quiz will be: {latest.label}
+          </div>;
+        })()}
         <div className="space-y-2 mb-8">
           {answers.map((a, i) => (
-            <div key={i} className={cn("flex items-center gap-3 p-3 rounded-xl text-sm", a.correct ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200")}>
+            <div key={i} className={cn("flex items-center gap-3 p-3 rounded-xl text-sm", a.correct ? "bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800" : "bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800")}>
               {a.correct ? <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" /> : <XCircle className="w-4 h-4 text-red-500 shrink-0" />}
-              <span className="truncate text-foreground">{questions[i]?.question}</span>
+              <span className="truncate">{questions[i]?.question}</span>
             </div>
           ))}
         </div>
-
         <div className="flex flex-col gap-3">
           <div className="flex gap-3">
-            <SoundButton variant="outline" className="flex-1" onClick={restart}>
-              <RotateCcw className="w-4 h-4 mr-2" /> New Quiz
-            </SoundButton>
-            <SoundButton className="flex-1" onClick={() => { setPhase("quiz"); setCurrent(0); setSelected(null); setAnswers([]); setShowExplanation(false); }}>
-              <RotateCcw className="w-4 h-4 mr-2" /> Retry Same
-            </SoundButton>
+            <SoundButton variant="outline" className="flex-1" onClick={restart}><RotateCcw className="w-4 h-4 mr-2" /> New Quiz</SoundButton>
+            <SoundButton className="flex-1" onClick={() => { setPhase("quiz"); setCurrent(0); setSelected(null); setAnswers([]); setShowExplanation(false); }}><RotateCcw className="w-4 h-4 mr-2" /> Retry Same</SoundButton>
           </div>
           <SoundButton variant="outline" onClick={() => { generateQuestions(true); setPhase("quiz"); setCurrent(questions.length); setSelected(null); setShowExplanation(false); }} disabled={extending}>
             {extending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-            Add {count} More Questions
+            Add {effectiveCount} More Questions
           </SoundButton>
         </div>
       </div>
@@ -185,23 +253,15 @@ export default function QuizPage() {
     <div className="max-w-2xl mx-auto p-8">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm text-muted-foreground">Question {current + 1} of {questions.length}</span>
-        <div className="flex items-center gap-3">
-          <button
-            title="Shuffle questions"
-            onMouseEnter={() => play("hover")}
-            onClick={shuffleQuestions}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted border border-border"
-          >
+        <div className="flex items-center gap-2">
+          <button title="Shuffle" onMouseEnter={() => play("hover")} onClick={shuffleQuestions}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted border border-border transition-colors">
             <Shuffle className="w-3 h-3" /> Shuffle
           </button>
-          <button
-            title="Add more questions"
-            onMouseEnter={() => play("hover")}
-            onClick={() => generateQuestions(true)}
-            disabled={extending}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted border border-border disabled:opacity-40"
-          >
-            {extending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} {extending ? "Adding..." : "Extend"}
+          <button title="Add more" onMouseEnter={() => play("hover")} onClick={() => generateQuestions(true)} disabled={extending}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted border border-border transition-colors disabled:opacity-40">
+            {extending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+            {extending ? "Adding..." : "Extend"}
           </button>
           <span className="text-sm font-medium text-primary">{answers.filter((a) => a.correct).length} correct</span>
         </div>
@@ -214,12 +274,10 @@ export default function QuizPage() {
           <p className="text-base font-medium leading-relaxed">{q.question}</p>
           {q.difficulty && (
             <span className={cn("text-xs px-2 py-0.5 rounded-full border shrink-0 font-medium", {
-              "border-green-300 text-green-700 bg-green-50": q.difficulty === "easy",
-              "border-amber-300 text-amber-700 bg-amber-50": q.difficulty === "medium",
-              "border-red-300 text-red-700 bg-red-50": q.difficulty === "hard",
-            })}>
-              {q.difficulty}
-            </span>
+              "border-green-300 text-green-700 bg-green-50 dark:bg-green-950/40 dark:text-green-400": q.difficulty === "easy",
+              "border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400": q.difficulty === "medium",
+              "border-red-300 text-red-700 bg-red-50 dark:bg-red-950/40 dark:text-red-400": q.difficulty === "hard",
+            })}>{q.difficulty}</span>
           )}
         </div>
       </div>
@@ -230,22 +288,15 @@ export default function QuizPage() {
           const isCorrect = idx === q.answer;
           const revealed = selected !== null;
           return (
-            <button
-              key={idx}
-              onMouseEnter={() => play("hover")}
-              onClick={() => selectAnswer(idx)}
-              disabled={selected !== null}
+            <button key={idx} onMouseEnter={() => play("hover")} onClick={() => selectAnswer(idx)} disabled={revealed}
               className={cn(
                 "w-full text-left px-4 py-3 rounded-xl border text-sm transition-all duration-200",
                 !revealed && "border-border hover:border-primary/50 hover:bg-muted/50",
-                revealed && isCorrect && "border-green-400 bg-green-50 text-green-800",
-                revealed && isSelected && !isCorrect && "border-red-400 bg-red-50 text-red-700",
+                revealed && isCorrect && "border-green-400 bg-green-50 text-green-800 dark:bg-green-950/30 dark:text-green-300",
+                revealed && isSelected && !isCorrect && "border-red-400 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300",
                 revealed && !isSelected && !isCorrect && "border-border opacity-50",
-              )}
-            >
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full border border-current text-xs font-bold mr-3 shrink-0">
-                {String.fromCharCode(65 + idx)}
-              </span>
+              )}>
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full border border-current text-xs font-bold mr-3 shrink-0">{String.fromCharCode(65 + idx)}</span>
               {opt}
               {revealed && isCorrect && <CheckCircle2 className="inline w-4 h-4 ml-2 text-green-600" />}
               {revealed && isSelected && !isCorrect && <XCircle className="inline w-4 h-4 ml-2 text-red-500" />}
