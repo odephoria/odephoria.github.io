@@ -9,6 +9,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
+  <script>
+    // Apply saved theme before first paint to prevent flash
+    try {
+      var t = localStorage.getItem("odephoria_theme");
+      if (t === "dark") document.documentElement.classList.add("dark");
+    } catch(e) {}
+  </script>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
