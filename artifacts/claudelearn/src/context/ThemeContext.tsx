@@ -7,7 +7,7 @@ interface ThemeContextValue {
   toggle: () => void;
 }
 
-const ThemeContext = createContext<ThemeContextValue>({ theme: "light", toggle: () => {} });
+const ThemeContext = createContext<ThemeContextValue>({ theme: "dark", toggle: () => {} });
 
 function applyTheme(t: Theme) {
   const root = document.documentElement;
@@ -18,8 +18,11 @@ function applyTheme(t: Theme) {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
-      return (localStorage.getItem("odephoria_theme") as Theme) ?? "light";
-    } catch { return "light"; }
+      const saved = localStorage.getItem("odephoria_theme") as Theme | null;
+      const t = saved ?? "dark"; // default to dark
+      applyTheme(t); // apply immediately, before first render
+      return t;
+    } catch { return "dark"; }
   });
 
   useEffect(() => { applyTheme(theme); }, [theme]);
@@ -27,6 +30,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const toggle = () => {
     setTheme((t) => {
       const next = t === "light" ? "dark" : "light";
+      applyTheme(next); // apply instantly, don't wait for useEffect
       try { localStorage.setItem("odephoria_theme", next); } catch {}
       return next;
     });

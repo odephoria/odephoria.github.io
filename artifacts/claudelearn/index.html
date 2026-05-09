@@ -10,11 +10,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <script>
-    // Apply saved theme before first paint to prevent flash
+    // Apply theme before first paint — defaults to dark
     try {
-      var t = localStorage.getItem("odephoria_theme");
+      var t = localStorage.getItem("odephoria_theme") || "dark";
       if (t === "dark") document.documentElement.classList.add("dark");
-    } catch(e) {}
+    } catch(e) {
+      document.documentElement.classList.add("dark");
+    }
   </script>
   <body>
     <div id="root"></div>
